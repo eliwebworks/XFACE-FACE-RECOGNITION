@@ -1,0 +1,49 @@
+/* Basic styles for camera view and message panel */
+body {
+    font-family: Arial, sans-serif;
+    margin: 0;
+    padding: 0;
+}
+
+h1 {
+    text-align: center;
+    margin-bottom: 20px;
+}
+
+#camera-container {
+    text-align: center;
+}
+
+video {
+    max-width: 100%;
+}
+
+canvas {
+    display: none;
+}
+
+#message-panel {
+    position: absolute;
+    top: 0;
+    right: 0;
+    padding: 10px;
+    background-color: rgba(0, 0, 0, 0.5);
+    color: white;
+    font-size: 16px;
+}
+
+/* Styles for registration page */
+#capture-button,
+#train-button {
+    margin: 10px;
+    padding: 10px 20px;
+    background-color: #3498db;
+    color: white;
+    border: none;
+    cursor: pointer;
+}
+
+#capture-button:hover,
+#train-button:hover {
+    background-color: #2980b9;
+}

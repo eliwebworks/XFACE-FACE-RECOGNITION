@@ -1,0 +1,265 @@
+import cv2
+import numpy as np
+import base64
+import io
+import os
+import time
+from flask import Flask, render_template, request, jsonify, Response
+from PIL import Image
+
+app = Flask(__name__)
+
+# Load Haar Cascade classifier for face detection
+face_cascade = cv2.CascadeClassifier('cascades/haarcascade_frontalface_default.xml')
+
+@app.route('/')
+def index():
+    return render_template('index.html')
+
+@app.route('/live_feed')
+def live_feed():
+    return Response(generate_frames(), mimetype='multipart/x-mixed-replace; boundary=frame')
+
+def generate_frames():
+    # Initialize camera capture
+    camera = cv2.VideoCapture(0)  # 0 represents the default camera (webcam)
+
+    while True:
+        success, frame = camera.read()  # Read a frame from the camera
+
+        if not success:
+            break
+
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+
+        # Detect faces using the cascade classifier
+        faces = face_cascade.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=5, minSize=(30, 30))
+
+        for (x, y, w, h) in faces:
+            cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 255, 0), 2)
+
+        _, img_encoded = cv2.imencode('.jpg', frame)
+        img_base64 = base64.b64encode(img_encoded).decode('utf-8')
+
+        yield (b'--frame\r\n'
+               b'Content-Type: image/jpeg\r\n\r\n' + img_encoded.tobytes() + b'\r\n')
+
+@app.route('/recognize_realtime', methods=['POST'])
+def recognize_realtime():
+    # Initialize VideoCapture using the selected camera
+    camera = cv2.VideoCapture(0)  # 0 represents the default camera (webcam)
+
+    recognized_message = ""  # Initialize recognized message
+
+    while True:
+        ret, frame = camera.read()  # Read a frame from the camera
+
+        if not ret:
+            break
+
+        # Perform face detection and recognition on the frame
+        gray_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        faces = face_cascade.detectMultiScale(gray_frame, scaleFactor=1.1, minNeighbors=5, minSize=(30, 30))
+
+        for (x, y, w, h) in faces:
+            cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 255, 0), 2)
+
+            # Perform face recognition using the loaded classifier (if it exists)
+            if os.path.exists('trained_classifiers/haarcascade_classifier.xml'):
+                # Load the trained Haar Cascade classifier
+                face_recognizer = cv2.face.LBPHFaceRecognizer_create()
+                face_recognizer.read('trained_classifiers/haarcascade_classifier.xml')
+
+                face_roi = gray_frame[y:y + h, x:x + w]
+                recognized_id, confidence = face_recognizer.predict(face_roi)
+
+                if confidence < 100:  # Adjust threshold based on your classifier and data
+                    recognized_name = id_map.get(recognized_id, "Unknown")
+                    current_time = time.strftime('%Y-%m-%d %H:%M:%S')
+                    recognized_message = f"Recognized: {recognized_name}\nTime: {current_time}"
+                    break  # Exit loop after recognizing one face
+
+        ret, jpeg = cv2.imencode('.jpg', frame)  # Convert the frame to JPEG format
+        image_data = base64.b64encode(jpeg.tobytes()).decode('utf-8')
+
+        camera.release()  # Release the VideoCapture
+
+        return jsonify({"success": True, "message": recognized_message, "image_data": image_data})
+
+"""
+@app.route('/recognize_realtime', methods=['POST'])
+def recognize_realtime():
+    # Get image data from request
+    image_data = request.form['image_data']
+    image_data = image_data.split(",")[1]
+    image_bytes = base64.b64decode(image_data)
+    pil_image = Image.open(io.BytesIO(image_bytes))
+
+    # Convert PIL image to OpenCV image
+    cv_image = np.array(pil_image)
+    cv_image = cv2.cvtColor(cv_image, cv2.COLOR_RGB2BGR)
+
+    # Perform face detection using Haar Cascade classifier
+    gray_image = cv2.cvtColor(cv_image, cv2.COLOR_BGR2GRAY)
+    faces = face_cascade.detectMultiScale(gray_image, scaleFactor=1.1, minNeighbors=5, minSize=(30, 30))
+
+    # Draw bounding rectangles for detected faces
+    for (x, y, w, h) in faces:
+        cv2.rectangle(cv_image, (x, y), (x + w, y + h), (0, 255, 0), 2)
+
+    # Process face recognition using the loaded classifier (if it exists)
+    recognized_message = ""
+    if os.path.exists('trained_classifiers/haarcascade_classifier.xml'):
+        # Load the trained Haar Cascade classifier
+        face_recognizer = cv2.face.LBPHFaceRecognizer_create()
+        face_recognizer.read('trained_classifiers/haarcascade_classifier.xml')
+
+        for (x, y, w, h) in faces:
+            face_roi = gray_image[y:y+h, x:x+w]
+
+            recognized_id, confidence = face_recognizer.predict(face_roi)
+
+            if confidence < 100:  # Adjust threshold based on your classifier and data
+                recognized_name = id_map.get(recognized_id, "Unknown")
+                current_time = time.strftime('%Y-%m-%d %H:%M:%S')
+                recognized_message = f"Recognized: {recognized_name}\nTime: {current_time}"
+                break  # Exit loop after recognizing one face
+
+    return jsonify({"success": True, "message": recognized_message})
+"""
+# ...
+
+# ...
+"""
+@app.route('/recognize_realtime', methods=['POST'])
+async def recognize_realtime():
+    try:
+        camera_id = request.json.get('camera_id')
+        if camera_id:
+            video_capture = cv2.VideoCapture(int(camera_id))
+        else:
+            video_capture = cv2.VideoCapture(0)  # Default camera (index 0)
+
+        # Initialize variables for face recognition and detection
+        recognized_message = ""
+        faces = []
+
+        # Perform face detection using Haar Cascade classifier
+        while True:
+            ret, frame = video_capture.read()
+            if not ret:
+                break
+
+            gray_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+            detected_faces = face_cascade.detectMultiScale(gray_frame, scaleFactor=1.1, minNeighbors=5, minSize=(30, 30))
+
+            for (x, y, w, h) in detected_faces:
+                face_roi = gray_frame[y:y+h, x:x+w]
+
+                if os.path.exists('trained_classifiers/haarcascade_classifier.xml'):
+                    face_recognizer = cv2.face.LBPHFaceRecognizer_create()
+                    face_recognizer.read('trained_classifiers/haarcascade_classifier.xml')
+
+                    recognized_id, confidence = face_recognizer.predict(face_roi)
+
+                    if confidence < 100:
+                        recognized_name = id_map.get(recognized_id, "Unknown")
+                        current_time = time.strftime('%Y-%m-%d %H:%M:%S')
+                        recognized_message = f"Recognized: {recognized_name}\nTime: {current_time}"
+                    else:
+                        recognized_message = "Face not recognized"
+
+                faces.append((x, y, w, h))
+
+            # Convert face coordinates to list for JSON serialization
+            face_coordinates = [(x, y, w, h) for (x, y, w, h) in faces]
+
+            # Break the loop if a face is recognized or when no face is detected
+            if recognized_message or len(detected_faces) == 0:
+                break
+
+            # Send frame to browser for rendering
+            frame_data = cv2.imencode('.jpg', frame)[1].tobytes()
+            yield (b'--frame\r\n'
+                   b'Content-Type: image/jpeg\r\n\r\n' + frame_data + b'\r\n')
+
+        # Release the camera
+        video_capture.release()
+
+        # Send the recognized message and face coordinates in JSON response
+        response_data = {
+            "success": True,
+            "message": recognized_message,
+            "faces": face_coordinates
+        }
+        yield (b'--frame\r\n'
+               b'Content-Type: application/json\r\n\r\n' + json.dumps(response_data).encode() + b'\r\n')
+
+    except Exception as e:
+        error_response = {"success": False, "message": str(e)}
+        yield (b'--frame\r\n'
+               b'Content-Type: application/json\r\n\r\n' + json.dumps(error_response).encode() + b'\r\n')
+"""
+# ...
+
+@app.route('/register_face', methods=['GET', 'POST'])
+def register_face():
+    if request.method == 'POST':
+        person_name = request.form['person_name']
+        image_data = request.form['image_data']
+        image_data = image_data.split(",")[1]
+        image_bytes = base64.b64decode(image_data)
+        pil_image = Image.open(io.BytesIO(image_bytes))
+        
+        # Convert PIL image to OpenCV image
+        cv_image = np.array(pil_image)
+        cv_image = cv2.cvtColor(cv_image, cv2.COLOR_RGB2BGR)
+        
+        # Save the captured image to the face_registry folder
+        person_folder = os.path.join('static/face_registry', person_name)
+        os.makedirs(person_folder, exist_ok=True)
+        image_path = os.path.join(person_folder, f"{int(time.time())}.jpg")
+        cv2.imwrite(image_path, cv_image)
+        
+        # Update classifiers based on the newly added image
+        update_classifiers()
+        
+        return jsonify({"success": True, "message": "Face registered successfully"})
+
+    return render_template('register.html')
+
+def update_classifiers():
+    # Load and update Haar Cascade classifier
+    face_cascade = cv2.CascadeClassifier('haarcascade_frontalface_default.xml')
+    
+    # Initialize lists to store face samples and corresponding labels
+    face_samples = []
+    labels = []
+    
+    # Iterate through registered persons' folders
+    for person_name in os.listdir('static/face_registry'):
+        person_folder = os.path.join('static/face_registry', person_name)
+        
+        for image_file in os.listdir(person_folder):
+            image_path = os.path.join(person_folder, image_file)
+            gray_image = cv2.imread(image_path, cv2.IMREAD_GRAYSCALE)
+            
+            faces = face_cascade.detectMultiScale(gray_image, scaleFactor=1.1, minNeighbors=5)
+            
+            for (x, y, w, h) in faces:
+                face_roi = gray_image[y:y+h, x:x+w]
+                face_samples.append(face_roi)
+                labels.append(person_name)
+    
+    # Train and update the Haar Cascade classifier
+    face_recognizer = cv2.face.LBPHFaceRecognizer_create()
+    face_recognizer.train(face_samples, np.array(labels))
+    
+    # Save the trained Haar Cascade classifier to the trained_classifiers folder
+    trained_folder = 'trained_classifiers'
+    os.makedirs(trained_folder, exist_ok=True)
+    classifier_path = os.path.join(trained_folder, 'haarcascade_classifier.xml')
+    face_recognizer.save(classifier_path)
+
+if __name__ == '__main__':
+    app.run(debug=True)
